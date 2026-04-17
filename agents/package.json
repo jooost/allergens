@@ -1,0 +1,17 @@
+{
+  "name": "allergen-agents",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "setup": "npx tsx --env-file=.env setup.ts",
+    "session": "npx tsx --env-file=.env session.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

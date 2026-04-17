@@ -1,0 +1,14 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "FUNCTIONS_NODE_BLOCK_ON_ENTRY_POINT_ERROR": "true",
+    "SQLCONNSTR_Default": "Server=localhost;Database=AllergenPlatform;User Id=sa;Password=YourPassword;Encrypt=false;",
+    "ENTRA_TENANT_ID": "your-tenant-id",
+    "ENTRA_CLIENT_ID": "your-client-id",
+    "BLOB_STORAGE_CONNECTION": "UseDevelopmentStorage=true",
+    "BLOB_CONTAINER_NAME": "allergen-docs-dev",
+    "SAS_TOKEN_EXPIRY_MINUTES": "30"
+  }
+}

@@ -1,0 +1,9 @@
+import mssql from "mssql";
+let pool = null;
+export { mssql as sql };
+export async function getPool() {
+    if (pool)
+        return pool;
+    pool = await mssql.connect(process.env.SQLCONNSTR_Default);
+    return pool;
+}

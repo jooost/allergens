@@ -1,0 +1,9 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "SQLCONNSTR_Default": "Server=localhost;Database=AllergenDB;User Id=sa;Password=YourPassword;TrustServerCertificate=true",
+    "PUBLIC_API_KEY": "change-me-in-production"
+  }
+}

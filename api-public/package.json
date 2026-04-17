@@ -1,0 +1,22 @@
+{
+  "name": "allergen-api-public",
+  "version": "1.0.0",
+  "description": "Public read-only API for allergen platform — served via Azure API Management",
+  "type": "module",
+  "main": "dist/src/app.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "start": "npm run build && func start",
+    "dev": "func start"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.5.0",
+    "mssql": "^11.0.1"
+  },
+  "devDependencies": {
+    "@types/mssql": "^9.1.5",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
