@@ -4,6 +4,7 @@ import { hasRole, canAccessCountry } from "../middleware/rbac.js";
 import { getPool, sql } from "../utils/db.js";
 import { writeAuditLog } from "../utils/audit.js";
 import { generateUploadSasToken } from "../utils/sas.js";
+import { mapDocument, mapDocumentVersion } from "../utils/map.js";
 async function getProductCountry(productId) {
     const pool = await getPool();
     const r = await pool
@@ -51,7 +52,7 @@ async function listDocuments(req, ctx) {
       WHERE pd.ProductId = @ProductId
       ORDER BY pd.DocumentType
     `);
-    return { jsonBody: result.recordset };
+    return { jsonBody: result.recordset.map(mapDocument) };
 }
 // POST /internal/v1/products/{productId}/documents
 // Creates a document record and returns a SAS upload URL
@@ -83,10 +84,12 @@ async function createDocument(req, ctx) {
         .request()
         .input("ProductId", sql.Int, productId)
         .input("DocumentType", sql.NVarChar(50), body.documentType)
+        .input("CreatedBy", sql.NVarChar(36), user.entraObjectId)
         .query(`
-      INSERT INTO ProductDocuments (ProductId, DocumentType, IsActive)
-      OUTPUT INSERTED.Id, INSERTED.ProductId, INSERTED.DocumentType, INSERTED.IsActive, INSERTED.CreatedAt
-      VALUES (@ProductId, @DocumentType, 1)
+      INSERT INTO ProductDocuments (ProductId, DocumentType, IsActive, CreatedBy)
+      OUTPUT INSERTED.Id, INSERTED.ProductId, INSERTED.DocumentType, INSERTED.IsActive,
+             INSERTED.CreatedBy, INSERTED.CreatedAt
+      VALUES (@ProductId, @DocumentType, 1, @CreatedBy)
     `);
     const doc = docResult.recordset[0];
     // Create the first version record (not yet uploaded — blob path will be confirmed on commit)
@@ -120,13 +123,13 @@ async function createDocument(req, ctx) {
         .query("UPDATE ProductDocuments SET CurrentVersionId = @VersionId WHERE Id = @DocumentId");
     await writeAuditLog("ProductDocuments", doc.Id, "Insert", user.entraObjectId, null, {
         ...doc,
-        currentVersionId: version.Id,
+        CurrentVersionId: version.Id,
     });
     return {
         status: 201,
         jsonBody: {
-            document: { ...doc, currentVersionId: version.Id },
-            version: { ...version, blobPath: sas.blobPath },
+            document: mapDocument({ ...doc, CurrentVersionId: version.Id }),
+            version: { ...mapDocumentVersion(version), blobPath: sas.blobPath },
             upload: {
                 uploadUrl: sas.uploadUrl,
                 expiresAt: sas.expiresAt,
@@ -193,7 +196,7 @@ async function addDocumentVersion(req, ctx) {
     return {
         status: 201,
         jsonBody: {
-            version,
+            version: mapDocumentVersion(version),
             upload: {
                 uploadUrl: sas.uploadUrl,
                 expiresAt: sas.expiresAt,
@@ -233,7 +236,7 @@ async function listDocumentVersions(req, ctx) {
       WHERE DocumentId = @DocumentId
       ORDER BY VersionNumber DESC
     `);
-    return { jsonBody: result.recordset };
+    return { jsonBody: result.recordset.map(mapDocumentVersion) };
 }
 // DELETE /internal/v1/products/{productId}/documents/{id}
 async function deleteDocument(req, ctx) {

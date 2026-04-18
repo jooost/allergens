@@ -15,7 +15,33 @@ function getSigningKey(header) {
         });
     });
 }
+const DEV_USER = {
+    entraObjectId: "dev-bypass-user",
+    displayName: "Dev User",
+    email: "dev@local",
+    roles: ["Admin"],
+    preferredLanguageId: null,
+};
 export async function authenticate(req) {
+    if (process.env.DEV_AUTH_BYPASS === "true") {
+        const pool = await getPool();
+        await pool
+            .request()
+            .input("EntraObjectId", sql.NVarChar(36), DEV_USER.entraObjectId)
+            .input("DisplayName", sql.NVarChar(200), DEV_USER.displayName)
+            .input("Email", sql.NVarChar(254), DEV_USER.email)
+            .query(`
+        MERGE UserProfiles WITH (HOLDLOCK) AS target
+        USING (SELECT @EntraObjectId AS EntraObjectId) AS source
+          ON target.EntraObjectId = source.EntraObjectId
+        WHEN MATCHED THEN
+          UPDATE SET LastLoginAt = SYSUTCDATETIME()
+        WHEN NOT MATCHED THEN
+          INSERT (EntraObjectId, DisplayName, Email, CreatedAt, LastLoginAt)
+          VALUES (@EntraObjectId, @DisplayName, @Email, SYSUTCDATETIME(), SYSUTCDATETIME());
+      `);
+        return DEV_USER;
+    }
     const authHeader = req.headers.get("authorization");
     if (!authHeader?.startsWith("Bearer ")) {
         throw { status: 401, message: "Missing or invalid Authorization header" };
@@ -40,7 +66,7 @@ export async function authenticate(req) {
         .input("DisplayName", sql.NVarChar(200), payload.name ?? "")
         .input("Email", sql.NVarChar(254), payload.preferred_username ?? payload.email ?? "")
         .query(`
-      MERGE UserProfiles AS target
+      MERGE UserProfiles WITH (HOLDLOCK) AS target
       USING (SELECT @EntraObjectId AS EntraObjectId) AS source
         ON target.EntraObjectId = source.EntraObjectId
       WHEN MATCHED THEN

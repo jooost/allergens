@@ -2,6 +2,7 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/fu
 import { authenticate } from "../middleware/auth.js";
 import { hasRole } from "../middleware/rbac.js";
 import { getPool, sql } from "../utils/db.js";
+import { mapAuditEntry } from "../utils/map.js";
 
 // GET /internal/v1/audit
 // Query params: tableName, recordId, action, changedBy, from, to, page, pageSize
@@ -81,7 +82,7 @@ async function queryAuditLog(req: HttpRequest, ctx: InvocationContext): Promise<
 
   return {
     jsonBody: {
-      data: dataResult.recordset,
+      data: dataResult.recordset.map(mapAuditEntry),
       pagination: {
         page,
         pageSize,

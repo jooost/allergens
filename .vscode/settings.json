@@ -1,3 +1,6 @@
 {
-    "azureFunctions.projectSubpath": "api-internal"
+    "azureFunctions.projectSubpath": "api-internal",
+    "dataworkspace.excludedProjects": [
+        "allergens/allergens.sqlproj"
+    ]
 }

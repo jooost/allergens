@@ -2,6 +2,7 @@ import { app } from "@azure/functions";
 import { authenticate } from "../middleware/auth.js";
 import { hasRole } from "../middleware/rbac.js";
 import { getPool, sql } from "../utils/db.js";
+import { mapAuditEntry } from "../utils/map.js";
 // GET /internal/v1/audit
 // Query params: tableName, recordId, action, changedBy, from, to, page, pageSize
 async function queryAuditLog(req, ctx) {
@@ -76,7 +77,7 @@ async function queryAuditLog(req, ctx) {
     const total = countResult.recordset[0].Total;
     return {
         jsonBody: {
-            data: dataResult.recordset,
+            data: dataResult.recordset.map(mapAuditEntry),
             pagination: {
                 page,
                 pageSize,

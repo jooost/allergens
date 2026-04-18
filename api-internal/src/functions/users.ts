@@ -3,6 +3,7 @@ import { authenticate } from "../middleware/auth.js";
 import { hasRole } from "../middleware/rbac.js";
 import { getPool, sql } from "../utils/db.js";
 import { writeAuditLog } from "../utils/audit.js";
+import { mapUser, mapPermission } from "../utils/map.js";
 
 // GET /internal/v1/users
 // Manager sees only their permitted countries; Admin sees all
@@ -30,7 +31,7 @@ async function listUsers(req: HttpRequest, ctx: InvocationContext): Promise<Http
       ORDER BY up.DisplayName
     `);
 
-  return { jsonBody: result.recordset };
+  return { jsonBody: result.recordset.map(mapUser) };
 }
 
 // GET /internal/v1/users/{entraObjectId}/permissions
@@ -58,7 +59,7 @@ async function getUserPermissions(
       ORDER BY r.Name, c.Name
     `);
 
-  return { jsonBody: result.recordset };
+  return { jsonBody: result.recordset.map(mapPermission) };
 }
 
 // POST /internal/v1/users/{entraObjectId}/permissions
@@ -114,16 +115,20 @@ async function grantPermission(
         INSERT (UserEntraObjectId, RegionId, CountryId, Role)
         VALUES (@UserEntraObjectId, @RegionId, @CountryId, @Role);
 
-      SELECT Id, UserEntraObjectId, RegionId, CountryId, Role
-      FROM UserPermissions
-      WHERE UserEntraObjectId = @UserEntraObjectId
-        AND RegionId = @RegionId
-        AND (CountryId = @CountryId OR (CountryId IS NULL AND @CountryId IS NULL))
+      SELECT up.Id, up.RegionId, up.CountryId, up.Role,
+             r.Name AS RegionName,
+             c.Name AS CountryName, c.IsoCode
+      FROM UserPermissions up
+      JOIN Regions r ON r.Id = up.RegionId
+      LEFT JOIN Countries c ON c.Id = up.CountryId
+      WHERE up.UserEntraObjectId = @UserEntraObjectId
+        AND up.RegionId = @RegionId
+        AND (up.CountryId = @CountryId OR (up.CountryId IS NULL AND @CountryId IS NULL))
     `);
 
   const perm = result.recordset[0];
   await writeAuditLog("UserPermissions", perm.Id, "Insert", user.entraObjectId, null, perm);
-  return { status: 201, jsonBody: perm };
+  return { status: 201, jsonBody: mapPermission(perm) };
 }
 
 // DELETE /internal/v1/users/{entraObjectId}/permissions/{id}
@@ -186,7 +191,7 @@ async function getMe(req: HttpRequest, ctx: InvocationContext): Promise<HttpResp
       email: user.email,
       roles: user.roles,
       preferredLanguageId: user.preferredLanguageId,
-      permissions: permsResult.recordset,
+      permissions: permsResult.recordset.map(mapPermission),
     },
   };
 }

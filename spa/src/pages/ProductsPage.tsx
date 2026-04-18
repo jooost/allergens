@@ -130,14 +130,14 @@ export function ProductsPage() {
             >
               Previous
             </button>
-            <span>Page {products.pagination.page} of {products.pagination.totalPages}</span>
+            <span>Page {products.page} of {products.totalPages}</span>
             <button
-              disabled={products.pagination.page >= products.pagination.totalPages}
+              disabled={products.page >= products.totalPages}
               onClick={() => setFilters((f) => ({ ...f, page: (f.page ?? 1) + 1 }))}
             >
               Next
             </button>
-            <span style={{ marginLeft: 16, color: "#666" }}>{products.pagination.total} total</span>
+            <span style={{ marginLeft: 16, color: "#666" }}>{products.total} total</span>
           </div>
         </>
       )}

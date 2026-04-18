@@ -3,6 +3,7 @@ import { authenticate } from "../middleware/auth.js";
 import { hasRole } from "../middleware/rbac.js";
 import { getPool, sql } from "../utils/db.js";
 import { writeAuditLog } from "../utils/audit.js";
+import { mapCategory } from "../utils/map.js";
 // GET /internal/v1/reference/allergens
 async function listAllergens(req, ctx) {
     const user = await authenticate(req);
@@ -25,7 +26,9 @@ async function listAllergens(req, ctx) {
       WHERE a.IsActive = 1
       ORDER BY a.SortOrder, a.Code
     `);
-    return { jsonBody: result.recordset };
+    return { jsonBody: result.recordset.map((r) => ({
+            id: r.Id, code: r.Code, sortOrder: r.SortOrder, name: r.Name, description: r.Description ?? null,
+        })) };
 }
 // GET /internal/v1/reference/categories
 async function listCategories(req, ctx) {
@@ -39,7 +42,9 @@ async function listCategories(req, ctx) {
     WHERE IsActive = 1
     ORDER BY Name
   `);
-    return { jsonBody: result.recordset };
+    return { jsonBody: result.recordset.map((r) => ({
+            id: r.Id, name: r.Name, description: r.Description ?? null, isActive: r.IsActive,
+        })) };
 }
 // GET /internal/v1/reference/regions
 async function listRegions(req, ctx) {
@@ -53,7 +58,9 @@ async function listRegions(req, ctx) {
     FROM Regions r
     ORDER BY r.Name
   `);
-    return { jsonBody: result.recordset };
+    return { jsonBody: result.recordset.map((r) => ({
+            id: r.Id, name: r.Name, countryCount: r.CountryCount,
+        })) };
 }
 // GET /internal/v1/reference/countries
 async function listCountries(req, ctx) {
@@ -75,7 +82,9 @@ async function listCountries(req, ctx) {
     ${where}
     ORDER BY r.Name, c.Name
   `);
-    return { jsonBody: result.recordset };
+    return { jsonBody: result.recordset.map((r) => ({
+            id: r.Id, name: r.Name, isoCode: r.IsoCode, regionId: r.RegionId, regionName: r.RegionName,
+        })) };
 }
 // GET /internal/v1/reference/languages
 async function listLanguages(req, ctx) {
@@ -88,7 +97,9 @@ async function listLanguages(req, ctx) {
     FROM Languages
     ORDER BY Name
   `);
-    return { jsonBody: result.recordset };
+    return { jsonBody: result.recordset.map((r) => ({
+            id: r.Id, name: r.Name, isoCode: r.IsoCode, isActive: r.IsActive,
+        })) };
 }
 // POST /internal/v1/reference/categories  (Admin only)
 async function createCategory(req, ctx) {
@@ -110,7 +121,7 @@ async function createCategory(req, ctx) {
     `);
     const created = result.recordset[0];
     await writeAuditLog("ProductCategories", created.Id, "Insert", user.entraObjectId, null, created);
-    return { status: 201, jsonBody: created };
+    return { status: 201, jsonBody: mapCategory(created) };
 }
 // PUT /internal/v1/reference/categories/{id}  (Admin only)
 async function updateCategory(req, ctx) {
@@ -143,7 +154,7 @@ async function updateCategory(req, ctx) {
     `);
     const updated = result.recordset[0];
     await writeAuditLog("ProductCategories", id, "Update", user.entraObjectId, old, updated);
-    return { jsonBody: updated };
+    return { jsonBody: mapCategory(updated) };
 }
 app.http("listAllergens", {
     route: "internal/v1/reference/allergens",

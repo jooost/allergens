@@ -46,6 +46,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+export function DevAuthProvider({ children }: { children: ReactNode }) {
+  const value: AuthContextValue = {
+    isAuthenticated: true,
+    isLoading: false,
+    login: () => {},
+    logout: () => {},
+    getAccessToken: async () => "dev-bypass",
+  };
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be inside AuthProvider");

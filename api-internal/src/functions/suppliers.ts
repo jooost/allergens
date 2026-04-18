@@ -3,6 +3,7 @@ import { authenticate } from "../middleware/auth.js";
 import { hasRole } from "../middleware/rbac.js";
 import { getPool, sql } from "../utils/db.js";
 import { writeAuditLog } from "../utils/audit.js";
+import { mapSupplier } from "../utils/map.js";
 
 // GET /internal/v1/suppliers
 async function listSuppliers(req: HttpRequest, ctx: InvocationContext): Promise<HttpResponseInit> {
@@ -19,7 +20,7 @@ async function listSuppliers(req: HttpRequest, ctx: InvocationContext): Promise<
     ORDER BY s.Name
   `);
 
-  return { jsonBody: result.recordset };
+  return { jsonBody: result.recordset.map(mapSupplier) };
 }
 
 // POST /internal/v1/suppliers
@@ -46,7 +47,7 @@ async function createSupplier(req: HttpRequest, ctx: InvocationContext): Promise
 
   const created = result.recordset[0];
   await writeAuditLog("Suppliers", created.Id, "Insert", user.entraObjectId, null, created);
-  return { status: 201, jsonBody: created };
+  return { status: 201, jsonBody: mapSupplier(created) };
 }
 
 // GET /internal/v1/suppliers/{id}
@@ -71,7 +72,7 @@ async function getSupplier(req: HttpRequest, ctx: InvocationContext): Promise<Ht
     `);
 
   if (!result.recordset[0]) return { status: 404, jsonBody: { error: "Not found" } };
-  return { jsonBody: result.recordset[0] };
+  return { jsonBody: mapSupplier(result.recordset[0]) };
 }
 
 // PUT /internal/v1/suppliers/{id}
@@ -111,7 +112,7 @@ async function updateSupplier(req: HttpRequest, ctx: InvocationContext): Promise
 
   const updated = result.recordset[0];
   await writeAuditLog("Suppliers", id, "Update", user.entraObjectId, old, updated);
-  return { jsonBody: updated };
+  return { jsonBody: mapSupplier(updated) };
 }
 
 app.http("listSuppliers", {

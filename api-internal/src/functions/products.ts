@@ -89,7 +89,7 @@ app.http("listProducts", {
           COALESCE(t.Description, t_en.Description) AS Description,
           pc.Name AS CategoryName,
           c.Name AS CountryName,
-          c.ISOCode AS CountryISOCode,
+          c.IsoCode AS CountryISOCode,
           COUNT(*) OVER () AS TotalCount
         FROM Products p
         LEFT JOIN ProductTranslations t    ON t.ProductId = p.Id    AND t.LanguageId = @LangId
@@ -103,7 +103,7 @@ app.http("listProducts", {
 
       const total: number = queryResult.recordset[0]?.TotalCount ?? 0;
       return json({
-        data: queryResult.recordset.map(stripTotalCount),
+        data: queryResult.recordset.map(mapProductSummary),
         page,
         pageSize,
         total,
@@ -236,7 +236,7 @@ app.http("getProduct", {
             COALESCE(t.Name, t_en.Name, p.SKU) AS Name,
             COALESCE(t.Description, t_en.Description) AS Description,
             pc.Name AS CategoryName,
-            c.Name AS CountryName, c.ISOCode AS CountryISOCode
+            c.Name AS CountryName, c.IsoCode AS CountryISOCode
           FROM Products p
           LEFT JOIN ProductTranslations t    ON t.ProductId = p.Id    AND t.LanguageId = @LangId
           LEFT JOIN ProductTranslations t_en ON t_en.ProductId = p.Id AND t_en.LanguageId = @FallbackLangId
@@ -252,7 +252,7 @@ app.http("getProduct", {
       if (!allowed) return forbidden();
 
       // Fetch related data
-      const [allergens, nutritional, translations, suppliers] = await Promise.all([
+      const [allergens, nutritional, translations, suppliers, documents] = await Promise.all([
         pool.request().input("ProductId", sql.Int, productId).query(`
           SELECT pa.AllergenId, pa.IntensityId, a.Name AS AllergenName, ai.Name AS IntensityName
           FROM ProductAllergens pa
@@ -265,7 +265,7 @@ app.http("getProduct", {
           FROM NutritionalInfo WHERE ProductId = @ProductId
         `),
         pool.request().input("ProductId", sql.Int, productId).query(`
-          SELECT pt.LanguageId, l.Code AS LanguageCode, pt.Name, pt.Description
+          SELECT pt.LanguageId, l.IsoCode AS LanguageCode, pt.Name, pt.Description
           FROM ProductTranslations pt JOIN Languages l ON l.Id = pt.LanguageId
           WHERE pt.ProductId = @ProductId
         `),
@@ -275,14 +275,69 @@ app.http("getProduct", {
           FROM ProductSuppliers ps JOIN Suppliers s ON s.Id = ps.SupplierId
           WHERE ps.ProductId = @ProductId
         `),
+        pool.request().input("ProductId", sql.Int, productId).query(`
+          SELECT pd.Id, pd.DocumentType, pd.IsActive, pd.CreatedAt, pd.CurrentVersionId,
+                 dv.VersionNumber AS CurrentVersionNumber, dv.FileName AS CurrentFileName,
+                 dv.BlobPath AS CurrentBlobPath, dv.UploadedAt AS CurrentUploadedAt
+          FROM ProductDocuments pd
+          LEFT JOIN DocumentVersions dv ON dv.Id = pd.CurrentVersionId
+          WHERE pd.ProductId = @ProductId AND pd.IsActive = 1
+        `),
       ]);
 
       return json({
-        ...product,
-        allergens: allergens.recordset,
-        nutritionalInfo: nutritional.recordset[0] ?? null,
-        translations: translations.recordset,
-        suppliers: suppliers.recordset,
+        id:             product.Id,
+        sku:            product.SKU,
+        status:         product.Status,
+        countryId:      product.CountryId,
+        countryName:    product.CountryName,
+        countryCode:    product.CountryISOCode,
+        categoryId:     product.CategoryId,
+        categoryName:   product.CategoryName,
+        name:           product.Name ?? null,
+        description:    product.Description ?? null,
+        updatedAt:      product.ModifiedAt,
+        createdAt:      product.CreatedAt,
+        allergens: allergens.recordset.map((r: any) => ({
+          allergenId:   r.AllergenId,
+          allergenName: r.AllergenName,
+          intensityId:  r.IntensityId,
+          presence:     r.IntensityName === "May Contain" ? "MayContain" : r.IntensityName,
+        })),
+        nutritionalInfo: nutritional.recordset[0] ? {
+          energyKj:           nutritional.recordset[0].EnergyKJ,
+          energyKcal:         nutritional.recordset[0].EnergyKcal,
+          fatGrams:           nutritional.recordset[0].Fat,
+          saturatedFatGrams:  nutritional.recordset[0].Saturates,
+          carbohydrateGrams:  nutritional.recordset[0].Carbohydrates,
+          sugarsGrams:        nutritional.recordset[0].Sugars,
+          proteinGrams:       nutritional.recordset[0].Protein,
+          saltGrams:          nutritional.recordset[0].Salt,
+        } : null,
+        translations: translations.recordset.map((r: any) => ({
+          languageId:   r.LanguageId,
+          languageCode: r.LanguageCode,
+          name:         r.Name,
+          description:  r.Description ?? null,
+        })),
+        suppliers: suppliers.recordset.map((r: any) => ({
+          id:           r.ProductSupplierId,
+          supplierId:   r.SupplierId,
+          supplierName: r.SupplierName,
+          priority:     r.Priority,
+          isActive:     r.IsActive,
+        })),
+        documents: documents.recordset.map((r: any) => ({
+          id:                    r.Id,
+          documentType:          r.DocumentType,
+          isActive:              r.IsActive,
+          createdAt:             r.CreatedAt,
+          currentVersionId:      r.CurrentVersionId,
+          currentVersionNumber:  r.CurrentVersionNumber,
+          currentFileName:       r.CurrentFileName,
+          currentBlobPath:       r.CurrentBlobPath,
+          currentUploadedAt:     r.CurrentUploadedAt,
+        })),
       });
     } catch (err: any) {
       return errorResponse(err);
@@ -506,4 +561,21 @@ function errorResponse(err: any): HttpResponseInit {
 function stripTotalCount(row: any) {
   const { TotalCount: _, ...rest } = row;
   return rest;
+}
+
+function mapProductSummary(row: any) {
+  return {
+    id:           row.Id,
+    sku:          row.SKU,
+    status:       row.Status,
+    countryId:    row.CountryId,
+    countryName:  row.CountryName,
+    countryCode:  row.CountryISOCode,
+    categoryId:   row.CategoryId,
+    categoryName: row.CategoryName,
+    name:         row.Name ?? null,
+    description:  row.Description ?? null,
+    updatedAt:    row.ModifiedAt,
+    createdAt:    row.CreatedAt,
+  };
 }

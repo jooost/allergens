@@ -3,6 +3,7 @@ import { authenticate } from "../middleware/auth.js";
 import { hasRole, canAccessCountry } from "../middleware/rbac.js";
 import { getPool, sql } from "../utils/db.js";
 import { writeAuditLog } from "../utils/audit.js";
+import { mapProductSupplier } from "../utils/map.js";
 
 // GET /internal/v1/products/{productId}/suppliers
 async function listProductSuppliers(
@@ -40,7 +41,7 @@ async function listProductSuppliers(
       ORDER BY ps.Priority ASC, s.Name ASC
     `);
 
-  return { jsonBody: result.recordset };
+  return { jsonBody: result.recordset.map(mapProductSupplier) };
 }
 
 // POST /internal/v1/products/{productId}/suppliers
@@ -84,7 +85,7 @@ async function addProductSupplier(
 
   const created = result.recordset[0];
   await writeAuditLog("ProductSuppliers", created.Id, "Insert", user.entraObjectId, null, created);
-  return { status: 201, jsonBody: created };
+  return { status: 201, jsonBody: mapProductSupplier(created) };
 }
 
 // PUT /internal/v1/products/{productId}/suppliers/{id}
@@ -135,7 +136,7 @@ async function updateProductSupplier(
 
   const updated = result.recordset[0];
   await writeAuditLog("ProductSuppliers", id, "Update", user.entraObjectId, old, updated);
-  return { jsonBody: updated };
+  return { jsonBody: mapProductSupplier(updated) };
 }
 
 // DELETE /internal/v1/products/{productId}/suppliers/{id}

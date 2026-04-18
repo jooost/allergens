@@ -140,10 +140,8 @@ export interface CurrentUser {
 
 export interface PaginatedResponse<T> {
   data: T[];
-  pagination: {
-    page: number;
-    pageSize: number;
-    total: number;
-    totalPages: number;
-  };
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 }
