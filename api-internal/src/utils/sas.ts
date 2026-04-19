@@ -11,6 +11,21 @@ export interface SasTokenResult {
   expiresAt: string;
 }
 
+export function generateReadSasUrl(blobPath: string, expiryMinutes = 60): string {
+  const connectionString = process.env.BLOB_STORAGE_CONNECTION!;
+  const containerName = process.env.BLOB_CONTAINER_NAME!;
+  const client = BlobServiceClient.fromConnectionString(connectionString);
+  const credential = (client as any).credential as StorageSharedKeyCredential;
+  const expiresOn = new Date(Date.now() + expiryMinutes * 60 * 1000);
+  const sas = generateBlobSASQueryParameters(
+    { containerName, blobName: blobPath, permissions: BlobSASPermissions.parse("r"), expiresOn },
+    credential,
+  );
+  const base = client.url.replace(/\/$/, "");
+  return `${base}/${containerName}/${blobPath}?${sas.toString()}`;
+}
+
+
 export function generateUploadSasToken(
   isoCountryCode: string,
   productId: number,

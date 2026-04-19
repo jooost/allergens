@@ -10,6 +10,7 @@ import type {
   CurrentUser,
   UserPermission,
   PaginatedResponse,
+  AuditEntry,
 } from "../types/index.js";
 
 export function createApi(getToken: () => Promise<string>) {
@@ -23,6 +24,25 @@ export function createApi(getToken: () => Promise<string>) {
       get: (id: number) => client.get<Supplier>(`/suppliers/${id}`),
       create: (data: unknown) => client.post<Supplier>("/suppliers", data),
       update: (id: number, data: unknown) => client.put<Supplier>(`/suppliers/${id}`, data),
+    },
+
+    image: {
+      upload: async (productId: number, file: File) => {
+        const token = await getToken();
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch(`/internal/v1/products/${productId}/image`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          throw Object.assign(new Error(err.error ?? "Upload failed"), { status: res.status });
+        }
+        return res.json() as Promise<{ imageUrl: string; imageFileName: string }>;
+      },
+      remove: (productId: number) => client.del(`/products/${productId}/image`),
     },
 
     documents: {
@@ -64,7 +84,7 @@ export function createApi(getToken: () => Promise<string>) {
         const qs = new URLSearchParams(
           Object.entries(params).map(([k, v]) => [k, String(v)]),
         );
-        return client.get<PaginatedResponse<unknown>>(`/audit?${qs}`);
+        return client.get<PaginatedResponse<AuditEntry>>(`/audit?${qs}`);
       },
     },
   };

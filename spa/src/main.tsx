@@ -1,3 +1,4 @@
+import "./index.css";
 import { StrictMode, Component, ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -29,6 +30,7 @@ import { ProductDetailPage } from "./pages/ProductDetailPage.js";
 import { ProductFormPage } from "./pages/ProductFormPage.js";
 import { SuppliersPage } from "./pages/SuppliersPage.js";
 import { UsersPage } from "./pages/UsersPage.js";
+import { AuditLogPage } from "./pages/AuditLogPage.js";
 
 const DEV_BYPASS = import.meta.env.VITE_DEV_AUTH_BYPASS === "true";
 
@@ -57,7 +59,7 @@ const queryClient = new QueryClient({
 function AppRoutes() {
   const { isAuthenticated, isLoading } = useAuth();
 
-  if (isLoading) return <div style={{ padding: 40 }}>Loading…</div>;
+  if (isLoading) return <div className="flex h-screen items-center justify-center text-muted-foreground">Loading…</div>;
   if (!isAuthenticated) return <LoginPage />;
 
   return (
@@ -71,6 +73,7 @@ function AppRoutes() {
           <Route path="/products/:id/edit" element={<ProductFormPage />} />
           <Route path="/suppliers" element={<SuppliersPage />} />
           <Route path="/users" element={<UsersPage />} />
+          <Route path="/audit" element={<AuditLogPage />} />
         </Routes>
       </Layout>
     </ApiProvider>

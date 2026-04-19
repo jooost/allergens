@@ -65,6 +65,12 @@ export interface NutritionalInfo {
   saltGrams: number | null;
 }
 
+export interface ProductSummaryAllergen {
+  allergenId: number;
+  code: string;
+  presence: "Contains" | "MayContain";
+}
+
 export interface ProductSummary {
   id: number;
   sku: string;
@@ -76,10 +82,24 @@ export interface ProductSummary {
   countryId: number;
   countryName: string;
   countryCode: string;
+  createdAt: string;
   updatedAt: string;
+  isVegetarian: boolean | null;
+  isVegan: boolean | null;
+  isCoeliacSafe: boolean | null;
+  imageUrl: string | null;
+  imageFileName: string | null;
+  allergens: ProductSummaryAllergen[];
 }
 
-export interface ProductDetail extends ProductSummary {
+export interface ProductAudit {
+  createdAt: string;
+  createdBy: string | null;
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+export interface ProductDetail extends Omit<ProductSummary, "allergens">, ProductAudit {
   translations: ProductTranslation[];
   allergens: ProductAllergen[];
   nutritionalInfo: NutritionalInfo | null;
@@ -136,6 +156,17 @@ export interface CurrentUser {
   roles: string[];
   preferredLanguageId: number | null;
   permissions: UserPermission[];
+}
+
+export interface AuditEntry {
+  id: number;
+  tableName: string;
+  recordId: number;
+  action: "Insert" | "Update" | "Delete";
+  changedBy: string;
+  changedAt: string;
+  oldValues: Record<string, unknown> | null;
+  newValues: Record<string, unknown> | null;
 }
 
 export interface PaginatedResponse<T> {

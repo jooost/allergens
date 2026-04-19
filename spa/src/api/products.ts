@@ -10,7 +10,7 @@ export interface ProductFilters {
   categoryId?: number;
   status?: string;
   supplierId?: number;
-  allergenId?: number;
+  allergenIds?: number[];
   search?: string;
   languageId?: number;
   page?: number;
@@ -21,8 +21,18 @@ export function productsApi(client: ApiClient) {
   return {
     list(filters: ProductFilters = {}) {
       const params = new URLSearchParams();
+      const keyMap: Record<string, string> = {
+        countryId:  "country",
+        categoryId: "category",
+        supplierId: "supplier",
+      };
       for (const [k, v] of Object.entries(filters)) {
-        if (v !== undefined && v !== "") params.set(k, String(v));
+        if (v === undefined || v === "") continue;
+        if (k === "allergenIds") {
+          if (Array.isArray(v) && v.length > 0) params.set("allergen", v.join(","));
+        } else {
+          params.set(keyMap[k] ?? k, String(v));
+        }
       }
       return client.get<PaginatedResponse<ProductSummary>>(`/products?${params}`);
     },

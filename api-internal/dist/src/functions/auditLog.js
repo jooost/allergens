@@ -48,9 +48,20 @@ async function queryAuditLog(req, ctx) {
     request.input("Offset", sql.Int, offset);
     request.input("PageSize", sql.Int, pageSize);
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-    const countResult = await pool
-        .request()
-        .query(`SELECT COUNT(*) AS Total FROM AuditLog ${where}`);
+    const countRequest = pool.request();
+    if (tableName)
+        countRequest.input("TableName", sql.NVarChar(100), tableName);
+    if (recordId)
+        countRequest.input("RecordId", sql.Int, parseInt(recordId));
+    if (action)
+        countRequest.input("Action", sql.NVarChar(20), action);
+    if (changedBy)
+        countRequest.input("ChangedBy", sql.NVarChar(36), changedBy);
+    if (from)
+        countRequest.input("From", sql.DateTime2, new Date(from));
+    if (to)
+        countRequest.input("To", sql.DateTime2, new Date(to));
+    const countResult = await countRequest.query(`SELECT COUNT(*) AS Total FROM AuditLog ${where}`);
     // Re-use conditions in the data query (need separate request due to mssql input binding)
     const dataRequest = pool.request();
     if (tableName)
@@ -68,10 +79,12 @@ async function queryAuditLog(req, ctx) {
     dataRequest.input("Offset", sql.Int, offset);
     dataRequest.input("PageSize", sql.Int, pageSize);
     const dataResult = await dataRequest.query(`
-    SELECT Id, TableName, RecordId, Action, ChangedBy, ChangedAt, OldValues, NewValues
-    FROM AuditLog
+    SELECT al.Id, al.TableName, al.RecordId, al.Action, al.ChangedAt, al.OldValues, al.NewValues,
+           COALESCE(up.DisplayName, al.ChangedBy) AS ChangedBy
+    FROM AuditLog al
+    LEFT JOIN UserProfiles up ON up.EntraObjectId = al.ChangedBy
     ${where}
-    ORDER BY ChangedAt DESC, Id DESC
+    ORDER BY al.ChangedAt DESC, al.Id DESC
     OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY
   `);
     const total = countResult.recordset[0].Total;

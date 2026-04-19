@@ -1,22 +1,19 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, X, ImagePlus, Trash2 } from "lucide-react";
 import { useApi } from "../context/ApiContext.js";
+import { Button } from "../components/ui/button.js";
+import { Input } from "../components/ui/input.js";
+import { Select } from "../components/ui/select.js";
+import { Label } from "../components/ui/label.js";
+import { Textarea } from "../components/ui/textarea.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
+import { cn } from "../lib/utils.js";
 import type { AllergenPresence } from "../types/index.js";
 
-interface AllergenEntry {
-  allergenId: number;
-  presence: AllergenPresence;
-  notes: string;
-}
-
-interface TranslationEntry {
-  languageId: number;
-  name: string;
-  description: string;
-  ingredients: string;
-  storageInstructions: string;
-}
+interface AllergenEntry { allergenId: number; presence: AllergenPresence; notes: string; }
+interface TranslationEntry { languageId: number; name: string; description: string; ingredients: string; storageInstructions: string; }
 
 export function ProductFormPage() {
   const { id } = useParams<{ id?: string }>();
@@ -25,44 +22,33 @@ export function ProductFormPage() {
   const navigate = useNavigate();
   const api = useApi();
   const qc = useQueryClient();
+
   const [sku, setSku] = useState("");
+  const [primaryName, setPrimaryName] = useState("");
   const [categoryId, setCategoryId] = useState<number | "">("");
   const [countryId, setCountryId] = useState<number | "">("");
+  const [status, setStatus] = useState<string>("");
   const [translations, setTranslations] = useState<TranslationEntry[]>([]);
+  const [baseLanguageId, setBaseLanguageId] = useState<number | null>(null);
+  const [isVegetarian, setIsVegetarian] = useState<boolean | null>(null);
+  const [isVegan, setIsVegan] = useState<boolean | null>(null);
+  const [isCoeliacSafe, setIsCoeliacSafe] = useState<boolean | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [imageFileName, setImageFileName] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [isDirty, setIsDirty] = useState(false);
   const [allergens, setAllergens] = useState<AllergenEntry[]>([]);
   const [nutrition, setNutrition] = useState({
-    servingSizeGrams: "",
-    energyKj: "",
-    energyKcal: "",
-    fatGrams: "",
-    saturatedFatGrams: "",
-    carbohydrateGrams: "",
-    sugarsGrams: "",
-    fibreGrams: "",
-    proteinGrams: "",
-    saltGrams: "",
+    energyKj: "", energyKcal: "", fatGrams: "", saturatedFatGrams: "",
+    carbohydrateGrams: "", sugarsGrams: "", fibreGrams: "", proteinGrams: "", saltGrams: "",
   });
 
-  const { data: categories } = useQuery({
-    queryKey: ["categories"],
-    queryFn: () => api.reference.categories(),
-  });
-
-  const { data: countries } = useQuery({
-    queryKey: ["countries"],
-    queryFn: () => api.reference.countries(),
-  });
-
-  const { data: allAllergens } = useQuery({
-    queryKey: ["allergens"],
-    queryFn: () => api.reference.allergens(),
-  });
-
-  const { data: languages } = useQuery({
-    queryKey: ["languages"],
-    queryFn: () => api.reference.languages(),
-  });
-
+  const { data: categories } = useQuery({ queryKey: ["categories"], queryFn: () => api.reference.categories() });
+  const { data: countries } = useQuery({ queryKey: ["countries"], queryFn: () => api.reference.countries() });
+  const { data: allAllergens } = useQuery({ queryKey: ["allergens"], queryFn: () => api.reference.allergens() });
+  const { data: languages } = useQuery({ queryKey: ["languages"], queryFn: () => api.reference.languages() });
   const { data: existing } = useQuery({
     queryKey: ["products", productId],
     queryFn: () => api.products.get(productId!),
@@ -72,98 +58,166 @@ export function ProductFormPage() {
   useEffect(() => {
     if (!existing) return;
     setSku(existing.sku);
+    setPrimaryName(existing.name ?? "");
     setCategoryId(existing.categoryId);
     setCountryId(existing.countryId);
-    setTranslations(
-      existing.translations.map((t) => ({
-        languageId: t.languageId,
-        name: t.name,
-        description: t.description ?? "",
-        ingredients: t.ingredients ?? "",
-        storageInstructions: t.storageInstructions ?? "",
-      })),
-    );
-    setAllergens(
-      existing.allergens.map((a) => ({
-        allergenId: a.allergenId,
-        presence: a.presence,
-        notes: a.notes ?? "",
-      })),
-    );
+    setStatus(existing.status);
+    const mappedTranslations = existing.translations.map((t) => ({
+      languageId: t.languageId, name: t.name, description: t.description ?? "",
+      ingredients: t.ingredients ?? "", storageInstructions: t.storageInstructions ?? "",
+    }));
+    setTranslations(mappedTranslations);
+    if (mappedTranslations.length > 0) setBaseLanguageId(mappedTranslations[0].languageId);
+    setIsVegetarian(existing.isVegetarian ?? null);
+    setIsVegan(existing.isVegan ?? null);
+    setIsCoeliacSafe(existing.isCoeliacSafe ?? null);
+    setImagePreviewUrl(existing.imageUrl ?? null);
+    setImageFileName(existing.imageFileName ?? null);
+    setAllergens(existing.allergens.map((a) => ({ allergenId: a.allergenId, presence: a.presence, notes: a.notes ?? "" })));
     if (existing.nutritionalInfo) {
       const n = existing.nutritionalInfo;
       setNutrition({
-        servingSizeGrams: String(n.servingSizeGrams ?? ""),
-        energyKj: String(n.energyKj ?? ""),
-        energyKcal: String(n.energyKcal ?? ""),
-        fatGrams: String(n.fatGrams ?? ""),
-        saturatedFatGrams: String(n.saturatedFatGrams ?? ""),
-        carbohydrateGrams: String(n.carbohydrateGrams ?? ""),
-        sugarsGrams: String(n.sugarsGrams ?? ""),
-        fibreGrams: String(n.fibreGrams ?? ""),
-        proteinGrams: String(n.proteinGrams ?? ""),
+        energyKj: String(n.energyKj ?? ""), energyKcal: String(n.energyKcal ?? ""),
+        fatGrams: String(n.fatGrams ?? ""), saturatedFatGrams: String(n.saturatedFatGrams ?? ""),
+        carbohydrateGrams: String(n.carbohydrateGrams ?? ""), sugarsGrams: String(n.sugarsGrams ?? ""),
+        fibreGrams: String(n.fibreGrams ?? ""), proteinGrams: String(n.proteinGrams ?? ""),
         saltGrams: String(n.saltGrams ?? ""),
       });
     }
   }, [existing]);
 
   const saveMutation = useMutation({
-    mutationFn: (data: unknown) =>
-      isEdit ? api.products.update(productId!, data) : api.products.create(data),
-    onSuccess: (product) => {
-      qc.invalidateQueries({ queryKey: ["products"] });
-      navigate(`/products/${product.id}`);
-    },
+    mutationFn: (data: unknown) => isEdit ? api.products.update(productId!, data) : api.products.create(data),
+    onSuccess: (product) => { setIsDirty(false); qc.invalidateQueries({ queryKey: ["products"] }); navigate(`/products/${product.id}`); },
   });
 
-  function toNum(v: string): number | null {
-    const n = parseFloat(v);
-    return isNaN(n) ? null : n;
-  }
+  function toNum(v: string): number | null { const n = parseFloat(v); return isNaN(n) ? null : n; }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const payload = {
-      sku,
-      categoryId: categoryId || undefined,
-      countryId: countryId || undefined,
-      translations: translations.filter((t) => t.name.trim()),
-      allergens: allergens.map((a) => ({
-        allergenId: a.allergenId,
-        presence: a.presence,
-        notes: a.notes || null,
-      })),
+    // Merge primaryName into the default language (id=1) translation
+    const mergedTranslations = (() => {
+      if (!primaryName.trim()) return translations.filter((t) => t.name.trim());
+      const baseLangId = baseLanguageId ?? 1;
+      const existing = translations.find((t) => t.languageId === baseLangId);
+      if (existing) {
+        return translations.map((t) => t.languageId === baseLangId ? { ...t, name: primaryName } : t).filter((t) => t.name.trim());
+      }
+      return [{ languageId: baseLangId, name: primaryName, description: "", ingredients: "", storageInstructions: "" }, ...translations].filter((t) => t.name.trim());
+    })();
+
+    saveMutation.mutate({
+      sku, categoryId: categoryId || undefined, countryId: countryId || undefined,
+      ...(isEdit && status ? { status } : {}),
+      isVegetarian, isVegan, isCoeliacSafe,
+      translations: mergedTranslations,
+      allergens: allergens.map((a) => ({ allergenId: a.allergenId, presence: a.presence, notes: a.notes || null })),
       nutritionalInfo: {
-        servingSizeGrams: toNum(nutrition.servingSizeGrams),
-        energyKj: toNum(nutrition.energyKj),
-        energyKcal: toNum(nutrition.energyKcal),
-        fatGrams: toNum(nutrition.fatGrams),
-        saturatedFatGrams: toNum(nutrition.saturatedFatGrams),
-        carbohydrateGrams: toNum(nutrition.carbohydrateGrams),
-        sugarsGrams: toNum(nutrition.sugarsGrams),
-        fibreGrams: toNum(nutrition.fibreGrams),
-        proteinGrams: toNum(nutrition.proteinGrams),
+        energyKj: toNum(nutrition.energyKj), energyKcal: toNum(nutrition.energyKcal),
+        fatGrams: toNum(nutrition.fatGrams), saturatedFatGrams: toNum(nutrition.saturatedFatGrams),
+        carbohydrateGrams: toNum(nutrition.carbohydrateGrams), sugarsGrams: toNum(nutrition.sugarsGrams),
+        fibreGrams: toNum(nutrition.fibreGrams), proteinGrams: toNum(nutrition.proteinGrams),
         saltGrams: toNum(nutrition.saltGrams),
       },
+    });
+  }
+
+  const [activeSection, setActiveSection] = useState("section-details");
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  useEffect(() => {
+    const sections = ["section-details", "section-allergens", "section-nutrition", "section-translations"];
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible.length > 0) setActiveSection(visible[0].target.id);
+      },
+      { rootMargin: "-20% 0px -60% 0px", threshold: 0 },
+    );
+    sections.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observerRef.current!.observe(el);
+    });
+    return () => observerRef.current?.disconnect();
+  }, []);
+
+  const NAV_SECTIONS = [
+    { id: "section-details",      label: "Product Details" },
+    { id: "section-allergens",    label: "Allergens" },
+    { id: "section-nutrition",    label: "Nutrition" },
+    { id: "section-translations", label: "Translations" },
+    ...(isEdit ? [{ id: "section-image", label: "Image" }] : []),
+  ];
+
+  async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !productId) return;
+    setImageError(null);
+    setImageUploading(true);
+    try {
+      const result = await api.image.upload(productId, file);
+      setImagePreviewUrl(URL.createObjectURL(file));
+      setImageFileName(result.imageFileName);
+    } catch (err: any) {
+      console.error("Image upload error:", err);
+      setImageError(err?.message ?? "Upload failed. Please try again.");
+    } finally {
+      setImageUploading(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  }
+
+  async function handleImageRemove() {
+    if (!productId) return;
+    setImageError(null);
+    setImageUploading(true);
+    try {
+      await api.image.remove(productId);
+      setImagePreviewUrl(null);
+      setImageFileName(null);
+    } catch (err: any) {
+      console.error("Image remove error:", err);
+      setImageError(err?.message ?? "Remove failed. Please try again.");
+    } finally {
+      setImageUploading(false);
+    }
+  }
+
+  const sectionComplete: Record<string, boolean> = {
+    "section-details":      !!(primaryName.trim() && sku.trim() && categoryId && countryId),
+    "section-allergens":    allergens.length > 0,
+    "section-nutrition":    Object.values(nutrition).some((v) => v !== ""),
+    "section-translations": translations.some((t) => t.name.trim()),
+  };
+
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty) { e.preventDefault(); e.returnValue = ""; }
     };
-    saveMutation.mutate(payload);
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  const backTo = isEdit ? `/products/${productId}` : "/products";
+  function navBack() {
+    if (isDirty && !window.confirm("You have unsaved changes. Leave without saving?")) return;
+    navigate(backTo);
   }
 
   function addTranslation(languageId: number) {
     if (translations.find((t) => t.languageId === languageId)) return;
-    setTranslations((ts) => [
-      ...ts,
-      { languageId, name: "", description: "", ingredients: "", storageInstructions: "" },
-    ]);
+    if (translations.length === 0) setBaseLanguageId(languageId);
+    setIsDirty(true);
+    setTranslations((ts) => [...ts, { languageId, name: "", description: "", ingredients: "", storageInstructions: "" }]);
   }
 
-  function updateTranslation(languageId: number, patch: Partial<TranslationEntry>) {
-    setTranslations((ts) =>
-      ts.map((t) => (t.languageId === languageId ? { ...t, ...patch } : t)),
-    );
+  function removeTranslation(languageId: number) {
+    setIsDirty(true);
+    setTranslations((ts) => ts.filter((x) => x.languageId !== languageId));
   }
 
   function toggleAllergen(allergenId: number) {
+    setIsDirty(true);
     if (allergens.find((a) => a.allergenId === allergenId)) {
       setAllergens((as) => as.filter((a) => a.allergenId !== allergenId));
     } else {
@@ -171,211 +225,363 @@ export function ProductFormPage() {
     }
   }
 
-  function updateAllergen(allergenId: number, patch: Partial<AllergenEntry>) {
-    setAllergens((as) =>
-      as.map((a) => (a.allergenId === allergenId ? { ...a, ...patch } : a)),
-    );
-  }
-
   return (
-    <div style={{ padding: 24, maxWidth: 800 }}>
-      <div style={{ marginBottom: 16 }}>
-        <Link to={isEdit ? `/products/${productId}` : "/products"}>← Back</Link>
+    <div className="p-6">
+      <div className="mb-5">
+        <button
+          type="button"
+          onClick={navBack}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {isEdit ? "Back to product" : "Products"}
+        </button>
+        <h1 className="text-lg font-semibold text-gray-900">{isEdit ? "Edit Product" : "New Product"}</h1>
       </div>
-      <h2>{isEdit ? "Edit Product" : "New Product"}</h2>
 
-      <form onSubmit={handleSubmit}>
-        <section style={{ marginBottom: 24 }}>
-          <h3>Basic Info</h3>
-          <label style={{ display: "block", marginBottom: 8 }}>
-            SKU *
-            <input
-              required
-              value={sku}
-              onChange={(e) => setSku(e.target.value)}
-              style={{ display: "block", marginTop: 4, padding: "6px 10px", width: 300 }}
-            />
-          </label>
-          <label style={{ display: "block", marginBottom: 8 }}>
-            Category *
-            <select
-              required
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value ? parseInt(e.target.value) : "")}
-              style={{ display: "block", marginTop: 4, padding: "6px 10px" }}
-            >
-              <option value="">Select…</option>
-              {categories?.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </label>
-          {!isEdit && (
-            <label style={{ display: "block", marginBottom: 8 }}>
-              Country *
-              <select
-                required
-                value={countryId}
-                onChange={(e) => setCountryId(e.target.value ? parseInt(e.target.value) : "")}
-                style={{ display: "block", marginTop: 4, padding: "6px 10px" }}
-              >
-                <option value="">Select…</option>
-                {countries?.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
-        </section>
-
-        <section style={{ marginBottom: 24 }}>
-          <h3>Translations</h3>
-          <select
-            onChange={(e) => {
-              if (e.target.value) addTranslation(parseInt(e.target.value));
-              e.target.value = "";
-            }}
-            style={{ marginBottom: 12, padding: "6px 10px" }}
-          >
-            <option value="">+ Add language…</option>
-            {languages
-              ?.filter((l) => !translations.find((t) => t.languageId === l.id))
-              .map((l) => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
-          </select>
-          {translations.map((t) => {
-            const lang = languages?.find((l) => l.id === t.languageId);
-            return (
-              <details key={t.languageId} style={{ marginBottom: 12, border: "1px solid #ddd", borderRadius: 4 }}>
-                <summary style={{ padding: "8px 12px", cursor: "pointer", fontWeight: 500 }}>
-                  {lang?.name ?? `Language #${t.languageId}`}
-                </summary>
-                <div style={{ padding: 12 }}>
-                  {[
-                    { field: "name", label: "Name *" },
-                    { field: "description", label: "Description" },
-                    { field: "ingredients", label: "Ingredients" },
-                    { field: "storageInstructions", label: "Storage Instructions" },
-                  ].map(({ field, label }) => (
-                    <label key={field} style={{ display: "block", marginBottom: 8 }}>
-                      {label}
-                      <textarea
-                        value={(t as any)[field]}
-                        onChange={(e) => updateTranslation(t.languageId, { [field]: e.target.value } as any)}
-                        rows={field === "name" ? 1 : 3}
-                        style={{ display: "block", marginTop: 4, padding: "6px 10px", width: "100%" }}
-                      />
-                    </label>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setTranslations((ts) => ts.filter((x) => x.languageId !== t.languageId))}
-                    style={{ color: "#d9534f", background: "none", border: "none", cursor: "pointer" }}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </details>
-            );
-          })}
-        </section>
-
-        <section style={{ marginBottom: 24 }}>
-          <h3>Allergens</h3>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {allAllergens?.map((a) => {
-              const entry = allergens.find((e) => e.allergenId === a.id);
+      <div className="flex gap-8">
+        {/* Sticky section nav */}
+        <nav className="hidden lg:block w-40 shrink-0">
+          <ul className="sticky top-6 space-y-1">
+            {NAV_SECTIONS.map(({ id, label }) => {
+              const isActive = activeSection === id;
+              const isDone = sectionComplete[id];
               return (
-                <div
-                  key={a.id}
-                  style={{
-                    border: `2px solid ${entry ? "#337ab7" : "#ddd"}`,
-                    borderRadius: 4,
-                    padding: "4px 10px",
-                    cursor: "pointer",
-                    background: entry ? "#e8f0fe" : "#fff",
-                  }}
-                  onClick={() => toggleAllergen(a.id)}
-                >
-                  {a.name}
-                </div>
+                <li key={id}>
+                  <a
+                    href={`#${id}`}
+                    onClick={(e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+                    className={cn(
+                      "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors",
+                      isActive
+                        ? "bg-primary/10 font-medium text-primary"
+                        : "text-gray-600 hover:text-gray-900 hover:bg-gray-100",
+                    )}
+                  >
+                    {isDone && !isActive ? (
+                      <svg className="h-3 w-3 shrink-0 text-green-500" viewBox="0 0 12 12" fill="none">
+                        <circle cx="6" cy="6" r="6" className="fill-green-100" />
+                        <path d="M3.5 6l1.75 1.75L8.5 4.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : (
+                      <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", isActive ? "bg-primary" : "bg-gray-300")} />
+                    )}
+                    {label}
+                  </a>
+                </li>
               );
             })}
-          </div>
-          {allergens.length > 0 && (
-            <div style={{ marginTop: 12 }}>
-              {allergens.map((entry) => {
-                const allergen = allAllergens?.find((a) => a.id === entry.allergenId);
-                return (
-                  <div key={entry.allergenId} style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
-                    <span style={{ minWidth: 140, fontWeight: 500 }}>{allergen?.name}</span>
-                    <select
-                      value={entry.presence}
-                      onChange={(e) => updateAllergen(entry.allergenId, { presence: e.target.value as AllergenPresence })}
-                      style={{ padding: "4px 8px" }}
-                    >
-                      <option value="Contains">Contains</option>
-                      <option value="MayContain">May Contain</option>
-                      <option value="Free">Free</option>
-                    </select>
-                    <input
-                      placeholder="Notes…"
-                      value={entry.notes}
-                      onChange={(e) => updateAllergen(entry.allergenId, { notes: e.target.value })}
-                      style={{ flex: 1, padding: "4px 8px" }}
-                    />
+          </ul>
+        </nav>
+
+        {/* Form */}
+        <div className="flex-1 max-w-3xl">
+      <form id="product-form" onSubmit={handleSubmit} onChange={() => setIsDirty(true)} className="space-y-4">
+        {/* Product details */}
+        <Card id="section-details">
+          <CardHeader><CardTitle>Product Details</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="primaryName">Name *</Label>
+              <Input
+                id="primaryName"
+                required
+                value={primaryName}
+                onChange={(e) => setPrimaryName(e.target.value)}
+                placeholder="e.g. Hazelnut Chocolate Bar"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="sku">SKU *</Label>
+                <Input id="sku" required value={sku} onChange={(e) => setSku(e.target.value)} placeholder="e.g. HF-001" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Category *</Label>
+                <Select required value={String(categoryId)} onChange={(e) => setCategoryId(e.target.value ? parseInt(e.target.value) : "")}>
+                  <option value="">Select category…</option>
+                  {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Country *</Label>
+                <Select required value={String(countryId)} onChange={(e) => setCountryId(e.target.value ? parseInt(e.target.value) : "")}>
+                  <option value="">Select country…</option>
+                  {countries?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              </div>
+              {isEdit && (
+                <div className="space-y-1.5">
+                  <Label>Status</Label>
+                  <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+                    <option value="Draft">Draft</option>
+                    <option value="Active">Active</option>
+                    <option value="Archived">Archived</option>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            {/* Dietary suitability */}
+            <div className="space-y-2 pt-1">
+              <Label>Dietary Suitability</Label>
+              <div className="flex flex-wrap gap-4">
+                {([
+                  { label: "Vegetarian", value: isVegetarian, set: setIsVegetarian },
+                  { label: "Vegan",      value: isVegan,      set: setIsVegan      },
+                  { label: "Coeliac",    value: isCoeliacSafe, set: setIsCoeliacSafe },
+                ] as { label: string; value: boolean | null; set: (v: boolean | null) => void }[]).map(({ label, value, set }) => (
+                  <div key={label} className="flex items-center gap-1.5">
+                    <span className="text-sm text-muted-foreground w-24">{label}</span>
+                    <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium">
+                      {([true, false] as boolean[]).map((opt) => (
+                        <button
+                          key={String(opt)}
+                          type="button"
+                          onClick={() => { set(value === opt ? null : opt); setIsDirty(true); }}
+                          className={cn(
+                            "px-2.5 py-1.5 transition-colors border-r border-border last:border-r-0",
+                            value === opt
+                              ? opt ? "bg-green-600 text-white" : "bg-red-100 text-red-700"
+                              : "bg-white text-muted-foreground hover:bg-gray-50",
+                          )}
+                        >
+                          {opt ? "Yes" : "No"}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Allergens */}
+        <Card id="section-allergens">
+          <CardHeader><CardTitle>Allergen Declaration</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {allAllergens?.map((a) => {
+                const active = !!allergens.find((e) => e.allergenId === a.id);
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => toggleAllergen(a.id)}
+                    className={cn(
+                      "rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
+                      active
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-white text-muted-foreground hover:border-gray-300 hover:text-foreground",
+                    )}
+                  >
+                    {a.name}
+                  </button>
                 );
               })}
             </div>
+            {allergens.length > 0 && (
+              <div className="space-y-2 border-t border-border pt-4">
+                {allergens.map((entry) => {
+                  const allergen = allAllergens?.find((a) => a.id === entry.allergenId);
+                  return (
+                    <div key={entry.allergenId} className="flex items-center gap-3">
+                      <span className="w-52 shrink-0 text-sm font-medium leading-snug">{allergen?.name}</span>
+                      <Select
+                        value={entry.presence}
+                        onChange={(e) => setAllergens((as) => as.map((a) => a.allergenId === entry.allergenId ? { ...a, presence: e.target.value as AllergenPresence } : a))}
+                        className="w-36"
+                      >
+                        <option value="Contains">Contains</option>
+                        <option value="MayContain">May Contain</option>
+                        <option value="Free">Free</option>
+                      </Select>
+                      <Input
+                        placeholder="Notes…"
+                        value={entry.notes}
+                        onChange={(e) => setAllergens((as) => as.map((a) => a.allergenId === entry.allergenId ? { ...a, notes: e.target.value } : a))}
+                        className="flex-1"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Nutritional info */}
+        <Card id="section-nutrition">
+          <CardHeader><CardTitle>Nutritional Information <span className="text-sm font-normal text-muted-foreground">(per 100g)</span></CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              {([
+                { key: "energyKj",           label: "Energy",       unit: "kJ",   placeholder: "0" },
+                { key: "energyKcal",         label: "Energy",       unit: "kcal", placeholder: "0" },
+                { key: "fatGrams",           label: "Fat",          unit: "g",    placeholder: "0" },
+                { key: "saturatedFatGrams",  label: "Saturates",    unit: "g",    placeholder: "0" },
+                { key: "carbohydrateGrams",  label: "Carbohydrate", unit: "g",    placeholder: "0" },
+                { key: "sugarsGrams",        label: "Sugars",       unit: "g",    placeholder: "0" },
+                { key: "fibreGrams",         label: "Fibre",        unit: "g",    placeholder: "0" },
+                { key: "proteinGrams",       label: "Protein",      unit: "g",    placeholder: "0" },
+                { key: "saltGrams",          label: "Salt",         unit: "g",    placeholder: "0" },
+              ] as { key: string; label: string; unit: string; placeholder: string }[]).map(({ key, label, unit, placeholder }) => (
+                <div key={key} className="space-y-1.5">
+                  <Label>{label}</Label>
+                  <div className="flex items-center rounded-md border border-border bg-white focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-colors">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      placeholder={placeholder}
+                      value={(nutrition as any)[key]}
+                      onChange={(e) => setNutrition((n) => ({ ...n, [key]: e.target.value }))}
+                      className="w-full bg-transparent px-3 py-2 text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <span className="pr-3 text-xs text-muted-foreground shrink-0">{unit}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Translations */}
+        <Card id="section-translations">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Translations</CardTitle>
+              <Select
+                value=""
+                onChange={(e) => { if (e.target.value) addTranslation(parseInt(e.target.value)); e.currentTarget.value = ""; }}
+                className="w-48 text-sm"
+              >
+                <option value="">Add language…</option>
+                {languages?.filter((l) => !translations.find((t) => t.languageId === l.id))
+                  .map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </Select>
+            </div>
+          </CardHeader>
+          {translations.length > 0 && (
+            <CardContent className="space-y-4">
+              {translations.map((t) => {
+                const lang = languages?.find((l) => l.id === t.languageId);
+                return (
+                  <div key={t.languageId} className="rounded-lg border border-border p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{lang?.name ?? `Language #${t.languageId}`}</span>
+                      {t.languageId !== baseLanguageId && (
+                        <button
+                          type="button"
+                          onClick={() => removeTranslation(t.languageId)}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Name *</Label>
+                      <Input value={t.name} onChange={(e) => setTranslations((ts) => ts.map((x) => x.languageId === t.languageId ? { ...x, name: e.target.value } : x))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Description</Label>
+                      <Textarea rows={2} value={t.description} onChange={(e) => setTranslations((ts) => ts.map((x) => x.languageId === t.languageId ? { ...x, description: e.target.value } : x))} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Ingredients</Label>
+                        <Textarea rows={2} value={t.ingredients} onChange={(e) => setTranslations((ts) => ts.map((x) => x.languageId === t.languageId ? { ...x, ingredients: e.target.value } : x))} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Storage Instructions</Label>
+                        <Textarea rows={2} value={t.storageInstructions} onChange={(e) => setTranslations((ts) => ts.map((x) => x.languageId === t.languageId ? { ...x, storageInstructions: e.target.value } : x))} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
           )}
-        </section>
+        </Card>
 
-        <section style={{ marginBottom: 24 }}>
-          <h3>Nutritional Information (per 100g)</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 24px" }}>
-            {[
-              { key: "servingSizeGrams", label: "Serving Size (g)" },
-              { key: "energyKj", label: "Energy (kJ)" },
-              { key: "energyKcal", label: "Energy (kcal)" },
-              { key: "fatGrams", label: "Fat (g)" },
-              { key: "saturatedFatGrams", label: "Saturated Fat (g)" },
-              { key: "carbohydrateGrams", label: "Carbohydrate (g)" },
-              { key: "sugarsGrams", label: "Sugars (g)" },
-              { key: "fibreGrams", label: "Fibre (g)" },
-              { key: "proteinGrams", label: "Protein (g)" },
-              { key: "saltGrams", label: "Salt (g)" },
-            ].map(({ key, label }) => (
-              <label key={key}>
-                {label}
-                <input
-                  type="number"
-                  step="0.01"
-                  value={(nutrition as any)[key]}
-                  onChange={(e) => setNutrition((n) => ({ ...n, [key]: e.target.value }))}
-                  style={{ display: "block", marginTop: 4, padding: "6px 10px", width: "100%" }}
-                />
-              </label>
-            ))}
-          </div>
-        </section>
+        {/* Product image — edit mode only */}
+        {isEdit && (
+          <Card id="section-image">
+            <CardHeader><CardTitle>Product Image</CardTitle></CardHeader>
+            <CardContent>
+              <div className="flex items-start gap-4">
+                {imagePreviewUrl ? (
+                  <img
+                    src={imagePreviewUrl}
+                    alt="Product"
+                    className="h-32 w-32 rounded-lg border border-border object-cover shrink-0"
+                  />
+                ) : (
+                  <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-lg border-2 border-dashed border-border bg-gray-50 text-muted-foreground">
+                    <ImagePlus className="h-8 w-8 opacity-40" />
+                  </div>
+                )}
+                <div className="flex flex-col gap-2 pt-1">
+                  {imageFileName && (
+                    <p className="text-xs text-muted-foreground">{imageFileName}</p>
+                  )}
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageSelect}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={imageUploading}
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    <ImagePlus className="h-3.5 w-3.5" />
+                    {imageUploading ? "Uploading…" : imagePreviewUrl ? "Replace" : "Upload image"}
+                  </Button>
+                  {imagePreviewUrl && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={imageUploading}
+                      onClick={handleImageRemove}
+                      className="text-destructive hover:text-destructive hover:bg-red-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Remove
+                    </Button>
+                  )}
+                  {imageError && <p className="text-xs text-destructive">{imageError}</p>}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-        <div style={{ display: "flex", gap: 12 }}>
-          <button
-            type="submit"
-            disabled={saveMutation.isPending}
-            style={{ padding: "8px 20px", background: "#337ab7", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
-          >
+        {/* Spacer so content isn't hidden behind sticky bar */}
+        <div className="h-4" />
+      </form>
+        </div>{/* end flex-1 */}
+      </div>{/* end flex gap-8 */}
+
+      {/* Sticky footer */}
+      <div className="sticky bottom-0 z-10 -mx-6 border-t border-border bg-white/95 px-6 py-3 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          <Button type="submit" form="product-form" disabled={saveMutation.isPending}>
             {saveMutation.isPending ? "Saving…" : isEdit ? "Save Changes" : "Create Product"}
-          </button>
+          </Button>
+          <Button type="button" variant="outline" onClick={navBack}>Cancel</Button>
           {saveMutation.isError && (
-            <span style={{ color: "#d9534f" }}>
-              {(saveMutation.error as Error).message}
-            </span>
+            <span className="text-sm text-destructive">{(saveMutation.error as Error).message}</span>
           )}
         </div>
-      </form>
+      </div>
     </div>
   );
 }
