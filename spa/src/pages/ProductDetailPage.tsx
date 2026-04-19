@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Pencil, MoreHorizontal, Archive, RotateCcw, Plus, Minus, Dot } from "lucide-react";
+import { ArrowLeft, Pencil, MoreHorizontal, Archive, RotateCcw } from "lucide-react";
 import { useApi } from "../context/ApiContext.js";
 import { useHasRole } from "../hooks/useCurrentUser.js";
 import { Button } from "../components/ui/button.js";
@@ -121,7 +121,7 @@ export function ProductDetailPage() {
                   <img
                     src={product.imageUrl}
                     alt={product.name ?? product.sku}
-                    className="h-16 w-16 object-cover"
+                    className="h-24 w-24 object-cover"
                   />
                 </button>
                 {lightboxOpen && (
@@ -145,7 +145,10 @@ export function ProductDetailPage() {
                 )}
               </>
             )}
-            <h1 className="text-lg font-semibold text-gray-900">{product.name ?? product.sku}</h1>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-lg font-semibold text-gray-900">{product.name ?? product.sku}</h1>
+              <Badge variant={statusVariant[product.status] ?? "muted"}>{product.status}</Badge>
+            </div>
           </div>
 
           {/* Actions */}
@@ -311,7 +314,7 @@ export function ProductDetailPage() {
         </Card>
 
         {/* Nutritional info */}
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Nutritional Information</CardTitle>
           </CardHeader>
@@ -348,7 +351,7 @@ export function ProductDetailPage() {
         </Card>
 
         {/* Suppliers */}
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Suppliers</CardTitle>
           </CardHeader>
@@ -404,6 +407,18 @@ export function ProductDetailPage() {
                     </div>
                     <div className="font-medium">{t.name}</div>
                     {t.description && <div className="mt-1 text-sm text-muted-foreground">{t.description}</div>}
+                    {t.ingredients && (
+                      <div className="mt-2">
+                        <div className="text-xs font-medium text-muted-foreground mb-0.5">Ingredients</div>
+                        <div className="text-sm">{t.ingredients}</div>
+                      </div>
+                    )}
+                    {t.storageInstructions && (
+                      <div className="mt-2">
+                        <div className="text-xs font-medium text-muted-foreground mb-0.5">Storage Instructions</div>
+                        <div className="text-sm">{t.storageInstructions}</div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -414,14 +429,7 @@ export function ProductDetailPage() {
         {/* Documents */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Documents</CardTitle>
-              {canEdit && (
-                <Button size="sm" variant="outline" asChild>
-                  <Link to={`/products/${productId}/documents/upload`}>Upload Document</Link>
-                </Button>
-              )}
-            </div>
+            <CardTitle>Documents</CardTitle>
           </CardHeader>
           <CardContent>
             {product.documents.length === 0 ? (
@@ -469,60 +477,77 @@ export function ProductDetailPage() {
   );
 }
 
-const ACTION_ICON: Record<string, React.ElementType> = {
-  Insert: Plus,
-  Delete: Minus,
-  Update: Dot,
+const ACTION_COLOUR: Record<string, string> = {
+  Insert:       "bg-green-500",
+  Delete:       "bg-red-500",
+  Update:       "bg-blue-400",
+  StatusChange: "bg-amber-400",
+  Rollback:     "bg-amber-400",
 };
 
-const ACTION_COLOUR: Record<string, string> = {
-  Insert: "text-green-600 bg-green-50 ring-green-200",
-  Delete: "text-red-600 bg-red-50 ring-red-200",
-  Update: "text-blue-600 bg-blue-50 ring-blue-200",
+const FIELD_LABELS: Record<string, string> = {
+  status:         "Status",
+  sku:            "SKU",
+  categoryId:     "Category",
+  countryId:      "Country",
+  isVegetarian:   "Vegetarian",
+  isVegan:        "Vegan",
+  isCoeliacSafe:  "Coeliac",
+  imageBlobPath:  "Image",
+  imageFileName:  "Image file",
 };
+
+function formatFieldName(key: string): string {
+  return FIELD_LABELS[key] ?? key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+}
+
+function formatValue(val: unknown): string {
+  if (val === null || val === undefined) return "None";
+  if (typeof val === "boolean") return val ? "Yes" : "No";
+  if (typeof val === "object") return "—";
+  const str = String(val);
+  return str.length > 50 ? str.slice(0, 50) + "…" : str;
+}
 
 function AuditRow({ entry }: { entry: AuditEntry }) {
-  const [expanded, setExpanded] = useState(false);
-  const Icon = ACTION_ICON[entry.action] ?? Dot;
-  const colour = ACTION_COLOUR[entry.action] ?? "text-gray-500 bg-gray-50 ring-gray-200";
-  const hasDiff = !!(entry.oldValues || entry.newValues);
+  const dotColour = ACTION_COLOUR[entry.action] ?? "bg-gray-400";
 
   const changedFields = entry.newValues
-    ? Object.entries(entry.newValues).filter(
-        ([k, v]) => entry.oldValues?.[k] !== v,
-      )
+    ? Object.entries(entry.newValues).filter(([k, v]) => entry.oldValues?.[k] !== v)
     : [];
 
+  const summary =
+    entry.action === "Insert" ? "Created product" :
+    entry.action === "Delete" ? "Deleted" :
+    changedFields.length === 0 ? "No recorded changes" :
+    null;
+
   return (
-    <li className="mb-4 ml-4 last:mb-0">
-      <span className={cn("absolute -left-2 flex h-4 w-4 items-center justify-center rounded-full ring-1", colour)}>
-        <Icon className="h-2.5 w-2.5" />
-      </span>
-      <div className="flex items-baseline gap-2">
-        <span className="text-xs font-medium text-gray-800">{entry.action}</span>
+    <li className="mb-5 ml-4 last:mb-0">
+      <span className={cn("absolute -left-[7px] h-3.5 w-3.5 rounded-full ring-2 ring-white", dotColour)} />
+
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-xs font-semibold text-gray-800">{entry.changedBy}</span>
         <span className="text-xs text-muted-foreground">
           {new Date(entry.changedAt).toLocaleString("en-GB", {
             day: "numeric", month: "short", year: "numeric",
             hour: "2-digit", minute: "2-digit",
           })}
         </span>
-        <span className="text-xs text-muted-foreground">by {entry.changedBy}</span>
-        {hasDiff && (
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            className="ml-auto text-xs text-primary hover:underline"
-          >
-            {expanded ? "Hide" : "Show changes"}
-          </button>
-        )}
       </div>
-      {expanded && changedFields.length > 0 && (
-        <div className="mt-1.5 rounded-md border border-border bg-gray-50 px-3 py-2 text-xs space-y-1">
+
+      {summary ? (
+        <p className="text-xs text-muted-foreground">{summary}</p>
+      ) : (
+        <div className="space-y-1">
           {changedFields.map(([key, newVal]) => (
-            <div key={key} className="flex items-start gap-2">
-              <span className="w-32 shrink-0 font-medium text-muted-foreground truncate">{key}</span>
-              <span className="text-muted-foreground line-through">{String(entry.oldValues?.[key] ?? "—")}</span>
-              <span className="text-gray-800">{String(newVal ?? "—")}</span>
+            <div key={key} className="flex items-center gap-1.5 text-xs">
+              <span className="w-28 shrink-0 font-medium text-gray-600">{formatFieldName(key)}</span>
+              <span className="text-muted-foreground line-through truncate max-w-[100px]">
+                {formatValue(entry.oldValues?.[key])}
+              </span>
+              <span className="text-muted-foreground shrink-0">→</span>
+              <span className="text-gray-800 truncate max-w-[100px]">{formatValue(newVal)}</span>
             </div>
           ))}
         </div>

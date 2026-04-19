@@ -1,4 +1,5 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
+import { BlobServiceClient } from "@azure/storage-blob";
 import { authenticate } from "../middleware/auth.js";
 import { hasRole, canAccessCountry } from "../middleware/rbac.js";
 import { getPool, sql } from "../utils/db.js";
@@ -313,6 +314,110 @@ async function deleteDocument(req: HttpRequest, ctx: InvocationContext): Promise
   await writeAuditLog("ProductDocuments", documentId, "Delete", user.entraObjectId, docResult.recordset[0], null);
   return { status: 204 };
 }
+
+// POST /internal/v1/products/{productId}/documents/upload-file  — multipart
+async function uploadDocumentFile(req: HttpRequest, _ctx: InvocationContext): Promise<HttpResponseInit> {
+  try {
+    const user = await authenticate(req);
+    if (!hasRole(user, "Editor")) return { status: 403, jsonBody: { error: "Forbidden" } };
+
+    const productId = parseInt(req.params.productId);
+    if (isNaN(productId)) return { status: 400, jsonBody: { error: "Invalid productId" } };
+
+    const product = await getProductCountry(productId);
+    if (!product) return { status: 404, jsonBody: { error: "Product not found" } };
+
+    const allowed = await canAccessCountry(user.entraObjectId, product.countryId, "Editor", user.roles);
+    if (!allowed) return { status: 403, jsonBody: { error: "Forbidden" } };
+
+    const formData = await req.formData();
+    const file = formData.get("file") as File | null;
+    const documentType = formData.get("documentType") as string | null;
+
+    if (!file) return { status: 400, jsonBody: { error: "file field is required" } };
+    if (!documentType) return { status: 400, jsonBody: { error: "documentType field is required" } };
+
+    const validTypes = ["Specification", "AllergenDeclaration", "NutritionalCertificate", "LabelScan", "Other"];
+    if (!validTypes.includes(documentType)) {
+      return { status: 400, jsonBody: { error: `documentType must be one of: ${validTypes.join(", ")}` } };
+    }
+
+    const pool = await getPool();
+
+    const docResult = await pool.request()
+      .input("ProductId", sql.Int, productId)
+      .input("DocumentType", sql.NVarChar(50), documentType)
+      .input("CreatedBy", sql.NVarChar(36), user.entraObjectId)
+      .query(`
+        INSERT INTO ProductDocuments (ProductId, DocumentType, IsActive, CreatedBy)
+        OUTPUT INSERTED.Id, INSERTED.ProductId, INSERTED.DocumentType, INSERTED.IsActive,
+               INSERTED.CreatedBy, INSERTED.CreatedAt
+        VALUES (@ProductId, @DocumentType, 1, @CreatedBy)
+      `);
+
+    const doc = docResult.recordset[0];
+    const blobPath = `${product.isoCode}/${productId}/${doc.Id}/v1_${file.name}`;
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const blobClient = BlobServiceClient.fromConnectionString(process.env.BLOB_STORAGE_CONNECTION!);
+    const containerClient = blobClient.getContainerClient(process.env.BLOB_CONTAINER_NAME!);
+    await containerClient.createIfNotExists();
+    const blockBlobClient = containerClient.getBlockBlobClient(blobPath);
+    await blockBlobClient.upload(buffer, buffer.length, {
+      blobHTTPHeaders: { blobContentType: file.type || "application/octet-stream" },
+    });
+
+    const verResult = await pool.request()
+      .input("DocumentId", sql.Int, doc.Id)
+      .input("VersionNumber", sql.Int, 1)
+      .input("FileName", sql.NVarChar(500), file.name)
+      .input("BlobPath", sql.NVarChar(1000), blobPath)
+      .input("FileSizeBytes", sql.BigInt, file.size ?? null)
+      .input("UploadedBy", sql.NVarChar(36), user.entraObjectId)
+      .query(`
+        INSERT INTO DocumentVersions (DocumentId, VersionNumber, FileName, BlobPath, FileSizeBytes, UploadedBy)
+        OUTPUT INSERTED.Id, INSERTED.DocumentId, INSERTED.VersionNumber, INSERTED.FileName,
+               INSERTED.BlobPath, INSERTED.FileSizeBytes, INSERTED.UploadedBy, INSERTED.UploadedAt
+        VALUES (@DocumentId, @VersionNumber, @FileName, @BlobPath, @FileSizeBytes, @UploadedBy)
+      `);
+
+    const version = verResult.recordset[0];
+
+    await pool.request()
+      .input("DocumentId", sql.Int, doc.Id)
+      .input("VersionId", sql.Int, version.Id)
+      .query("UPDATE ProductDocuments SET CurrentVersionId = @VersionId WHERE Id = @DocumentId");
+
+    await writeAuditLog("ProductDocuments", doc.Id, "Insert", user.entraObjectId, null, {
+      ...doc, currentVersionId: version.Id, fileName: file.name,
+    });
+
+    return {
+      status: 201,
+      jsonBody: {
+        id: doc.Id,
+        productId: doc.ProductId,
+        documentType: doc.DocumentType,
+        isActive: doc.IsActive,
+        createdAt: doc.CreatedAt,
+        currentVersionId: version.Id,
+        currentVersionNumber: version.VersionNumber,
+        currentFileName: version.FileName,
+        currentBlobPath: version.BlobPath,
+      },
+    };
+  } catch (err: any) {
+    console.error(err);
+    return { status: 500, jsonBody: { error: "Internal server error" } };
+  }
+}
+
+app.http("uploadDocumentFile", {
+  route: "internal/v1/products/{productId}/documents/upload-file",
+  methods: ["POST"],
+  authLevel: "anonymous",
+  handler: uploadDocumentFile,
+});
 
 app.http("listDocuments", {
   route: "internal/v1/products/{productId}/documents",

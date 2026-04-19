@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, X, ImagePlus, Trash2 } from "lucide-react";
+import { ArrowLeft, X, ImagePlus, FilePlus } from "lucide-react";
 import { useApi } from "../context/ApiContext.js";
 import { Button } from "../components/ui/button.js";
 import { Input } from "../components/ui/input.js";
@@ -10,7 +10,7 @@ import { Label } from "../components/ui/label.js";
 import { Textarea } from "../components/ui/textarea.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
 import { cn } from "../lib/utils.js";
-import type { AllergenPresence } from "../types/index.js";
+import type { AllergenPresence, ProductDocument } from "../types/index.js";
 
 interface AllergenEntry { allergenId: number; presence: AllergenPresence; notes: string; }
 interface TranslationEntry { languageId: number; name: string; description: string; ingredients: string; storageInstructions: string; }
@@ -34,10 +34,14 @@ export function ProductFormPage() {
   const [isVegan, setIsVegan] = useState<boolean | null>(null);
   const [isCoeliacSafe, setIsCoeliacSafe] = useState<boolean | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const [imageFileName, setImageFileName] = useState<string | null>(null);
+  const [, setImageFileName] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const [docType, setDocType] = useState("Specification");
+  const [docUploading, setDocUploading] = useState(false);
+  const [docError, setDocError] = useState<string | null>(null);
+  const docFileRef = useRef<HTMLInputElement>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [allergens, setAllergens] = useState<AllergenEntry[]>([]);
   const [nutrition, setNutrition] = useState({
@@ -52,6 +56,11 @@ export function ProductFormPage() {
   const { data: existing } = useQuery({
     queryKey: ["products", productId],
     queryFn: () => api.products.get(productId!),
+    enabled: isEdit && productId !== null,
+  });
+  const { data: documents, refetch: refetchDocuments } = useQuery<ProductDocument[]>({
+    queryKey: ["products", productId, "documents"],
+    queryFn: () => api.documents.list(productId!) as Promise<ProductDocument[]>,
     enabled: isEdit && productId !== null,
   });
 
@@ -126,7 +135,7 @@ export function ProductFormPage() {
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
-    const sections = ["section-details", "section-allergens", "section-nutrition", "section-translations"];
+    const sections = ["section-details", "section-allergens", "section-nutrition", "section-translations", "section-documents"];
     observerRef.current = new IntersectionObserver(
       (entries) => {
         const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
@@ -146,7 +155,7 @@ export function ProductFormPage() {
     { id: "section-allergens",    label: "Allergens" },
     { id: "section-nutrition",    label: "Nutrition" },
     { id: "section-translations", label: "Translations" },
-    ...(isEdit ? [{ id: "section-image", label: "Image" }] : []),
+    ...(isEdit ? [{ id: "section-documents", label: "Documents" }] : []),
   ];
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -164,6 +173,22 @@ export function ProductFormPage() {
     } finally {
       setImageUploading(false);
       if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  }
+
+  async function handleDocUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !productId) return;
+    setDocError(null);
+    setDocUploading(true);
+    try {
+      await api.documents.uploadFile(productId, file, docType);
+      await refetchDocuments();
+    } catch (err: any) {
+      setDocError(err?.message ?? "Upload failed");
+    } finally {
+      setDocUploading(false);
+      if (docFileRef.current) docFileRef.current.value = "";
     }
   }
 
@@ -322,37 +347,66 @@ export function ProductFormPage() {
               )}
             </div>
 
-            {/* Dietary suitability */}
-            <div className="space-y-2 pt-1">
-              <Label>Dietary Suitability</Label>
-              <div className="flex flex-wrap gap-4">
-                {([
-                  { label: "Vegetarian", value: isVegetarian, set: setIsVegetarian },
-                  { label: "Vegan",      value: isVegan,      set: setIsVegan      },
-                  { label: "Coeliac",    value: isCoeliacSafe, set: setIsCoeliacSafe },
-                ] as { label: string; value: boolean | null; set: (v: boolean | null) => void }[]).map(({ label, value, set }) => (
-                  <div key={label} className="flex items-center gap-1.5">
-                    <span className="text-sm text-muted-foreground w-24">{label}</span>
-                    <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium">
-                      {([true, false] as boolean[]).map((opt) => (
-                        <button
-                          key={String(opt)}
-                          type="button"
-                          onClick={() => { set(value === opt ? null : opt); setIsDirty(true); }}
-                          className={cn(
-                            "px-2.5 py-1.5 transition-colors border-r border-border last:border-r-0",
-                            value === opt
-                              ? opt ? "bg-green-600 text-white" : "bg-red-100 text-red-700"
-                              : "bg-white text-muted-foreground hover:bg-gray-50",
-                          )}
-                        >
-                          {opt ? "Yes" : "No"}
-                        </button>
-                      ))}
+            {/* Dietary suitability + image row */}
+            <div className="flex items-start gap-6 pt-1">
+              <div className="flex-1 space-y-2">
+                <Label>Dietary Suitability</Label>
+                <div className="flex flex-wrap gap-4">
+                  {([
+                    { label: "Vegetarian", value: isVegetarian, set: setIsVegetarian },
+                    { label: "Vegan",      value: isVegan,      set: setIsVegan      },
+                    { label: "Coeliac",    value: isCoeliacSafe, set: setIsCoeliacSafe },
+                  ] as { label: string; value: boolean | null; set: (v: boolean | null) => void }[]).map(({ label, value, set }) => (
+                    <div key={label} className="flex items-center gap-1.5">
+                      <span className="text-sm text-muted-foreground w-24">{label}</span>
+                      <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium">
+                        {([true, false] as boolean[]).map((opt) => (
+                          <button
+                            key={String(opt)}
+                            type="button"
+                            onClick={() => { set(value === opt ? null : opt); setIsDirty(true); }}
+                            className={cn(
+                              "px-2.5 py-1.5 transition-colors border-r border-border last:border-r-0",
+                              value === opt
+                                ? opt ? "bg-green-600 text-white" : "bg-red-100 text-red-700"
+                                : "bg-white text-muted-foreground hover:bg-gray-50",
+                            )}
+                          >
+                            {opt ? "Yes" : "No"}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
+
+              {/* Product image — edit mode only */}
+              {isEdit && (
+                <div className="shrink-0 flex flex-col items-center gap-2">
+                  {imagePreviewUrl ? (
+                    <img
+                      src={imagePreviewUrl}
+                      alt="Product"
+                      className="h-24 w-24 rounded-lg border border-border object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-24 w-24 items-center justify-center rounded-lg border-2 border-dashed border-border bg-gray-50 text-muted-foreground">
+                      <ImagePlus className="h-6 w-6 opacity-40" />
+                    </div>
+                  )}
+                  <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
+                  <Button type="button" variant="outline" size="sm" disabled={imageUploading} onClick={() => imageInputRef.current?.click()} className="w-24 text-xs">
+                    {imageUploading ? "Uploading…" : imagePreviewUrl ? "Replace" : "Upload"}
+                  </Button>
+                  {imagePreviewUrl && (
+                    <Button type="button" variant="ghost" size="sm" disabled={imageUploading} onClick={handleImageRemove} className="w-24 text-xs text-destructive hover:text-destructive hover:bg-red-50">
+                      Remove
+                    </Button>
+                  )}
+                  {imageError && <p className="text-xs text-destructive text-center w-24">{imageError}</p>}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -506,59 +560,49 @@ export function ProductFormPage() {
           )}
         </Card>
 
-        {/* Product image — edit mode only */}
+        {/* Documents — edit mode only */}
         {isEdit && (
-          <Card id="section-image">
-            <CardHeader><CardTitle>Product Image</CardTitle></CardHeader>
-            <CardContent>
-              <div className="flex items-start gap-4">
-                {imagePreviewUrl ? (
-                  <img
-                    src={imagePreviewUrl}
-                    alt="Product"
-                    className="h-32 w-32 rounded-lg border border-border object-cover shrink-0"
-                  />
-                ) : (
-                  <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-lg border-2 border-dashed border-border bg-gray-50 text-muted-foreground">
-                    <ImagePlus className="h-8 w-8 opacity-40" />
-                  </div>
-                )}
-                <div className="flex flex-col gap-2 pt-1">
-                  {imageFileName && (
-                    <p className="text-xs text-muted-foreground">{imageFileName}</p>
-                  )}
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleImageSelect}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={imageUploading}
-                    onClick={() => imageInputRef.current?.click()}
-                  >
-                    <ImagePlus className="h-3.5 w-3.5" />
-                    {imageUploading ? "Uploading…" : imagePreviewUrl ? "Replace" : "Upload image"}
-                  </Button>
-                  {imagePreviewUrl && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={imageUploading}
-                      onClick={handleImageRemove}
-                      className="text-destructive hover:text-destructive hover:bg-red-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Remove
-                    </Button>
-                  )}
-                  {imageError && <p className="text-xs text-destructive">{imageError}</p>}
+          <Card id="section-documents">
+            <CardHeader><CardTitle>Documents</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              {documents && documents.length > 0 ? (
+                <div className="divide-y divide-border">
+                  {documents.map((d) => (
+                    <div key={d.id} className="flex items-center justify-between py-2 first:pt-0 last:pb-0">
+                      <div>
+                        <span className="text-sm font-medium">{d.documentType}</span>
+                        {d.currentFileName && (
+                          <span className="ml-2 text-sm text-muted-foreground">
+                            {d.currentFileName} <span className="text-xs">v{d.currentVersionNumber}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No documents attached</p>
+              )}
+              <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-border">
+                <Select value={docType} onChange={(e) => setDocType(e.target.value)} className="w-52 text-sm">
+                  <option value="Specification">Specification</option>
+                  <option value="AllergenDeclaration">Allergen Declaration</option>
+                  <option value="NutritionalCertificate">Nutritional Certificate</option>
+                  <option value="LabelScan">Label Scan</option>
+                  <option value="Other">Other</option>
+                </Select>
+                <input ref={docFileRef} type="file" className="hidden" onChange={handleDocUpload} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={docUploading}
+                  onClick={() => docFileRef.current?.click()}
+                >
+                  <FilePlus className="h-3.5 w-3.5" />
+                  {docUploading ? "Uploading…" : "Upload Document"}
+                </Button>
+                {docError && <p className="text-xs text-destructive">{docError}</p>}
               </div>
             </CardContent>
           </Card>

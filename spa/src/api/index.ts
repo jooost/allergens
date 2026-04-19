@@ -50,6 +50,22 @@ export function createApi(getToken: () => Promise<string>) {
         client.get(`/products/${productId}/documents`),
       create: (productId: number, data: unknown) =>
         client.post(`/products/${productId}/documents`, data),
+      uploadFile: async (productId: number, file: File, documentType: string) => {
+        const token = await getToken();
+        const form = new FormData();
+        form.append("file", file);
+        form.append("documentType", documentType);
+        const res = await fetch(`/internal/v1/products/${productId}/documents/upload-file`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          throw Object.assign(new Error(err.error ?? "Upload failed"), { status: res.status });
+        }
+        return res.json();
+      },
       listVersions: (productId: number, docId: number) =>
         client.get(`/products/${productId}/documents/${docId}/versions`),
       addVersion: (productId: number, docId: number, data: unknown) =>

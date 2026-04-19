@@ -90,6 +90,7 @@ export interface ProductSummary {
   imageUrl: string | null;
   imageFileName: string | null;
   allergens: ProductSummaryAllergen[];
+  suppliers: { supplierId: number; name: string }[];
 }
 
 export interface ProductAudit {
@@ -99,7 +100,7 @@ export interface ProductAudit {
   updatedBy: string | null;
 }
 
-export interface ProductDetail extends Omit<ProductSummary, "allergens">, ProductAudit {
+export interface ProductDetail extends Omit<ProductSummary, "allergens" | "suppliers">, ProductAudit {
   translations: ProductTranslation[];
   allergens: ProductAllergen[];
   nutritionalInfo: NutritionalInfo | null;

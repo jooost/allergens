@@ -368,18 +368,19 @@ export function ProductsPage() {
               </th>
               <SortTh label="SKU" col="sku" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
               <SortTh label="Name" col="name" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
-              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Contains</th>
-              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">May Contain</th>
-              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Category</th>
-              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Country</th>
-              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Contains</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">May Contain</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Suppliers</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Category</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Country</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Status</th>
               <SortTh label="Updated" col="updatedAt" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
               <th className="w-24 px-3 py-2" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading && (
-              <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">Loading…</td></tr>
+              <tr><td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">Loading…</td></tr>
             )}
             {rows.map((p) => (
               <ProductRow
@@ -395,7 +396,7 @@ export function ProductsPage() {
             ))}
             {!isLoading && rows.length === 0 && (
               <tr>
-                <td colSpan={10}>
+                <td colSpan={11}>
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <PackageSearch className="mb-3 h-10 w-10 text-muted-foreground/40" strokeWidth={1.25} />
                     {hasAnyFilter ? (
@@ -451,7 +452,7 @@ function SortTh({ label, col, sortCol, sortDir, onSort }: SortThProps) {
   const active = sortCol === col;
   const Icon = active ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
   return (
-    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
       <button
         onClick={() => onSort(col)}
         className={cn(
@@ -541,6 +542,24 @@ function ProductRow({ product: p, selected, onToggle, highlightCodes, canEdit, o
           </td>
         );
       })}
+      <td className="px-3 py-2">
+        {p.suppliers?.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {p.suppliers.map((s) => (
+              <Link
+                key={s.supplierId}
+                to={`/suppliers/${s.supplierId}`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-xs text-primary hover:underline whitespace-nowrap"
+              >
+                {s.name}
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </td>
       <td className="px-3 py-2 text-xs text-muted-foreground">{p.categoryName}</td>
       <td className="px-3 py-2 whitespace-nowrap text-xs">
         <span className="mr-1">{flag(p.countryCode)}</span>

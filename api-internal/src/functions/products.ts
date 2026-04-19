@@ -113,8 +113,28 @@ app.http("listProducts", {
       `);
 
       const total: number = queryResult.recordset[0]?.TotalCount ?? 0;
+      const productIds = queryResult.recordset.map((r: any) => r.Id as number);
+
+      // Batch-fetch suppliers for this page of products
+      const supplierMap = new Map<number, { supplierId: number; name: string }[]>();
+      if (productIds.length > 0) {
+        const inList = productIds.map((_: number, i: number) => `@Pid${i}`).join(",");
+        const supReq = pool.request();
+        productIds.forEach((id: number, i: number) => supReq.input(`Pid${i}`, sql.Int, id));
+        const supResult = await supReq.query(`
+          SELECT ps.ProductId, ps.SupplierId, s.Name AS SupplierName
+          FROM ProductSuppliers ps
+          JOIN Suppliers s ON s.Id = ps.SupplierId
+          WHERE ps.ProductId IN (${inList}) AND ps.IsActive = 1
+        `);
+        for (const r of supResult.recordset) {
+          if (!supplierMap.has(r.ProductId)) supplierMap.set(r.ProductId, []);
+          supplierMap.get(r.ProductId)!.push({ supplierId: r.SupplierId, name: r.SupplierName });
+        }
+      }
+
       return json({
-        data: queryResult.recordset.map(mapProductSummary),
+        data: queryResult.recordset.map((row: any) => mapProductSummary(row, supplierMap)),
         page,
         pageSize,
         total,
@@ -175,9 +195,11 @@ app.http("createProduct", {
               .input("LanguageId", sql.Int, t.languageId)
               .input("Name", sql.NVarChar(200), t.name)
               .input("Description", sql.NVarChar(sql.MAX), t.description ?? null)
+              .input("Ingredients", sql.NVarChar(sql.MAX), t.ingredients ?? null)
+              .input("StorageInstructions", sql.NVarChar(sql.MAX), t.storageInstructions ?? null)
               .query(`
-                INSERT INTO ProductTranslations (ProductId, LanguageId, Name, Description)
-                VALUES (@ProductId, @LanguageId, @Name, @Description)
+                INSERT INTO ProductTranslations (ProductId, LanguageId, Name, Description, Ingredients, StorageInstructions)
+                VALUES (@ProductId, @LanguageId, @Name, @Description, @Ingredients, @StorageInstructions)
               `);
           }
         }
@@ -290,7 +312,8 @@ app.http("getProduct", {
           FROM NutritionalInfo WHERE ProductId = @ProductId
         `),
         pool.request().input("ProductId", sql.Int, productId).query(`
-          SELECT pt.LanguageId, l.IsoCode AS LanguageCode, pt.Name, pt.Description
+          SELECT pt.LanguageId, l.IsoCode AS LanguageCode, pt.Name, pt.Description,
+                 pt.Ingredients, pt.StorageInstructions
           FROM ProductTranslations pt JOIN Languages l ON l.Id = pt.LanguageId
           WHERE pt.ProductId = @ProductId
         `),
@@ -347,10 +370,12 @@ app.http("getProduct", {
           saltGrams:          nutritional.recordset[0].Salt,
         } : null,
         translations: translations.recordset.map((r: any) => ({
-          languageId:   r.LanguageId,
-          languageCode: r.LanguageCode,
-          name:         r.Name,
-          description:  r.Description ?? null,
+          languageId:           r.LanguageId,
+          languageCode:         r.LanguageCode,
+          name:                 r.Name,
+          description:          r.Description ?? null,
+          ingredients:          r.Ingredients ?? null,
+          storageInstructions:  r.StorageInstructions ?? null,
         })),
         suppliers: suppliers.recordset.map((r: any) => ({
           id:           r.ProductSupplierId,
@@ -442,12 +467,16 @@ app.http("updateProduct", {
               .input("LanguageId", sql.Int, t.languageId)
               .input("Name", sql.NVarChar(200), t.name)
               .input("Description", sql.NVarChar(sql.MAX), t.description ?? null)
+              .input("Ingredients", sql.NVarChar(sql.MAX), t.ingredients ?? null)
+              .input("StorageInstructions", sql.NVarChar(sql.MAX), t.storageInstructions ?? null)
               .query(`
                 MERGE ProductTranslations AS target
                 USING (SELECT @ProductId AS ProductId, @LanguageId AS LanguageId) AS src
                   ON target.ProductId = src.ProductId AND target.LanguageId = src.LanguageId
-                WHEN MATCHED THEN UPDATE SET Name = @Name, Description = @Description
-                WHEN NOT MATCHED THEN INSERT (ProductId, LanguageId, Name, Description) VALUES (@ProductId, @LanguageId, @Name, @Description);
+                WHEN MATCHED THEN UPDATE SET Name = @Name, Description = @Description,
+                  Ingredients = @Ingredients, StorageInstructions = @StorageInstructions
+                WHEN NOT MATCHED THEN INSERT (ProductId, LanguageId, Name, Description, Ingredients, StorageInstructions)
+                  VALUES (@ProductId, @LanguageId, @Name, @Description, @Ingredients, @StorageInstructions);
               `);
           }
         }
@@ -619,9 +648,10 @@ function nullableBit(val: any): boolean | null {
   return val === null || val === undefined ? null : !!val;
 }
 
-function mapProductSummary(row: any) {
+function mapProductSummary(row: any, supplierMap?: Map<number, { supplierId: number; name: string }[]>) {
   const allergens: { allergenId: number; code: string; intensityId: number }[] =
     row.AllergenJson ? JSON.parse(row.AllergenJson) : [];
+  const suppliers = supplierMap?.get(row.Id) ?? [];
   return {
     id:             row.Id,
     sku:            row.SKU,
@@ -643,5 +673,6 @@ function mapProductSummary(row: any) {
       code:        a.code,
       presence:    a.intensityId === 1 ? "Contains" : "MayContain",
     })),
+    suppliers,
   };
 }
